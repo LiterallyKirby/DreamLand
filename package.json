@@ -1,0 +1,15 @@
+{
+  "name": "dreamland",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "concurrently \"npm run dev\" \"npm run electron\"",
+    "dev": "cd frontend && vite",  
+    "electron": "electron .",
+    "build": "vite build --cwd frontend"
+  },
+  "devDependencies": {
+    "electron": "^35.2.1",
+    "concurrently": "^9.1.2"
+  }
+}
