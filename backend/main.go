@@ -6,13 +6,17 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
+	"os/exec"
 
 	"github.com/gorilla/handlers"
 )
 
 type Package struct {
-	Name        string `json:"Name"`
-	Description string `json:"Description"`
+	Name        string  `json:"Name"`
+	Description string  `json:"Description"`
+	Author      string  `json:"Maintainer"`
+	Popularity  float64 `json:"Popularity"`
 }
 
 type AURResponse struct {
@@ -21,14 +25,20 @@ type AURResponse struct {
 }
 
 func main() {
-	// Allow CORS for all origins, methods, and headers
-	http.HandleFunc("/api/test", test)
-	http.HandleFunc("/api/Search", GetPackages)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/test", test)
+	mux.HandleFunc("/api/Search", GetPackages)
+	mux.HandleFunc("/api/Install", install)
+
+	corsHandler := handlers.CORS(
+		handlers.AllowedOrigins([]string{"http://localhost:5174"}), // your frontend's origin
+		handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS"}),
+		handlers.AllowedHeaders([]string{"Content-Type", "Authorization"}),
+	)(mux)
 
 	fmt.Println("Go server listening on port 8080")
+	http.ListenAndServe(":8080", corsHandler)
 
-	// Enable CORS and start the server
-	http.ListenAndServe(":8080", handlers.CORS(handlers.AllowedOrigins([]string{"*"}))(http.DefaultServeMux))
 }
 
 func test(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +99,7 @@ func GetPackages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to read response body", http.StatusInternalServerError)
 		return
 	}
-	fmt.Println("Response body:", string(body))
+	//fmt.Println("Response body:", string(body))
 
 	// Parse the response into the AURResponse struct
 	var aurResp AURResponse
@@ -97,6 +107,7 @@ func GetPackages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to parse response", http.StatusInternalServerError)
 		return
 	}
+	fmt.Println(aurResp)
 	// Check if the AUR returned an error
 	if aurResp.Error != "" {
 		http.Error(w, fmt.Sprintf("AUR error: %s", aurResp.Error), http.StatusInternalServerError)
@@ -114,4 +125,75 @@ func GetPackages(w http.ResponseWriter, r *http.Request) {
 	// Set content type and send the response as JSON
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(aurResp)
+}
+
+func install(w http.ResponseWriter, r *http.Request) {
+	// CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method != http.MethodPost {
+		http.Error(w, "ONLY POST ALLOWED", http.StatusMethodNotAllowed)
+		return
+	}
+
+	toInstall := r.URL.Query().Get("pkg")
+	if toInstall == "" {
+		http.Error(w, "Missing 'pkg' query parameter", http.StatusBadRequest)
+		fmt.Println("Failed to install: Missing pkg")
+		return
+	}
+
+	cmd := exec.Command("rm", "-fr", toInstall)
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println("Error removing previous directory:", err)
+		http.Error(w, "Error removing previous directory", http.StatusInternalServerError)
+		return
+	}
+
+	aurUrl := "https://aur.archlinux.org/"
+	url := fmt.Sprintf("%s%s.git", aurUrl, toInstall)
+
+	fmt.Println("Cloning from URL:", url)
+
+	cmd = exec.Command("git", "clone", url)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Println("Git clone error:", string(output))
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "failure",
+			"message": "Git clone failed: " + err.Error(),
+		})
+		return
+	}
+
+	// Navigate into the package directory
+	os.Chdir(toInstall)
+
+	// Run makepkg to build the package
+	cmd = exec.Command("makepkg", "-si", "--noconfirm")
+	cmd.Env = append(os.Environ(), "PACMAN_AUTH=pkexec")
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		fmt.Println("Error during makepkg:", string(output))
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "failure",
+			"message": "Couldn't build the package: " + string(output),
+		})
+		return
+	}
+
+	// Simulate install or pass to your real install logic here
+	aurURL := fmt.Sprintf("https://aur.archlinux.org/packages/%s", toInstall)
+	fmt.Println("AUR Package URL:", aurURL)
+
+	// Respond with a success message as JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "success",
+		"message": "Package install triggered: " + toInstall,
+	})
+	fmt.Println("Done!")
+	return
 }

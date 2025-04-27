@@ -3,6 +3,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import HomePage from './views/Home.vue'; // First screen
 import SearchPage from './views/SearchPage.vue'; // Second screen
+import InstallScreen from './components/InstallScreen.vue';
 
 const routes = [
   {
@@ -14,6 +15,11 @@ const routes = [
     path: '/Search',
     name: 'Search',
     component: SearchPage, // Fixed the import here
+  },
+  {
+    path: '/Install',
+    name: 'Install',
+    component: InstallScreen,
   },
 ];
 

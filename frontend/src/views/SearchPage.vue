@@ -10,7 +10,7 @@
         :key="pkg.Name"
         :name="pkg.Name"
         :description="pkg.Description"
-        @install="installPackage"
+        @install=installPackage(pkg)
       />
     </div>
   </div>
@@ -27,10 +27,24 @@ const searchTerm = route.query.searchTerm || ''
 const errorMessage = ref('')
 const packages = ref([])
 
-const installPackage = (pkgName) => {
-  alert(`Installing ${pkgName}...`)
-  // TODO: call backend install endpoint
+
+const installPackage = async (pkg) => {
+  console.log("Installing Package:", pkg.Name)
+  console.log(pkg)
+  router.push({
+    path: '/Install', 
+    query: { 
+      pkgName: pkg.Name,
+      pkgDesc: pkg.Description,
+      pkgPop: pkg.Popularity,
+      pkgAuth: pkg.Maintainer
+
+
+
+    }  // Corrected to pass the correct package name
+  })
 }
+
 
 const fetchPackages = async () => {
   if (!searchTerm) {
@@ -49,6 +63,7 @@ const fetchPackages = async () => {
     }
     const data = await res.json()
     packages.value = data.results || []
+    console.log(data.results)
     if (!packages.value.length) {
       errorMessage.value = 'No packages found. Try a different search.'
       router.push({ path: '/' })
